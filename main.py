@@ -1,6 +1,3 @@
-"""
-Hlavní entry point Discord bota - modulární struktura s Cogs
-"""
 import discord
 from discord.ext import commands
 import asyncio
@@ -8,7 +5,9 @@ from pathlib import Path
 import json
 import os
 import sys
+import logging
 
+logging.basicConfig(level=logging.INFO)
 
 def load_config():
     config_path = Path(__file__).parent / "config.json"
@@ -81,7 +80,6 @@ async def on_message(message):
 
 @bot.event
 async def on_command_error(ctx, error):
-    """Globální error handler"""
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("This command is restricted to administrators.")
     elif isinstance(error, commands.NoPrivateMessage):
@@ -89,21 +87,19 @@ async def on_command_error(ctx, error):
     elif isinstance(error, (commands.ChannelNotFound)):
         await ctx.send("Invalid channel.")
     elif isinstance(error, commands.CommandNotFound):
-        pass  # Ignorujeme neexistující příkazy
+        pass
     else:
         raise error
 
 async def load_cogs():
-    """Načte všechny Cogs moduly ze složky cogs (včetně podsložek)."""
     base_dir = Path(__file__).parent / "cogs"
 
     for file in sorted(base_dir.rglob("*.py")):
-        # přeskočí __init__.py a "privátní" soubory
         if file.name == "__init__.py" or file.name.startswith("_"):
             continue
 
         rel = file.relative_to(Path(__file__).parent).with_suffix("")
-        module = ".".join(rel.parts)  # např. cogs.music nebo cogs.admin.moderation
+        module = ".".join(rel.parts)
 
         try:
             await bot.load_extension(module)
@@ -112,7 +108,6 @@ async def load_cogs():
             print(f"Error loading {module}: {e}")
 
 async def main():
-    """Hlavní asynchronní funkce"""
     async with bot:
         await load_cogs()
         await bot.start(DISCORD_TOKEN)
@@ -120,11 +115,17 @@ async def main():
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def restart(ctx):
-    """Restartuje bota"""
     global RESTART_REQUESTED
     RESTART_REQUESTED = True
     await ctx.send("Restarting bot...")
     await bot.close()
+    
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def end(ctx):
+    await ctx.send("Closing bot...")
+    await bot.close()
+
 
 if __name__ == '__main__':
     asyncio.run(main())

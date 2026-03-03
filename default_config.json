@@ -5,7 +5,8 @@
   ],
   "ydl_options": {
     "format": "bestaudio/best",
-    "noplaylist": "True",
+    "remote_components": "github",
+    "noplaylist": true,
     "quiet": true
   },
   "ffmpeg_options": {
