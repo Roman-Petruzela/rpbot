@@ -1,6 +1,3 @@
-"""
-Zábavné příkazy - dostupné pro všechny uživatele
-"""
 import random
 import discord
 from discord.ext import commands

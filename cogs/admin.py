@@ -1,6 +1,3 @@
-"""
-Admin příkazy - jen pro uživatele s Administrator oprávněním
-"""
 import discord
 from discord.ext import commands
 import asyncio

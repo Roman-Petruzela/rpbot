@@ -1,6 +1,3 @@
-"""
-Hudební příkazy - přehrávání z YouTube ve voice channelech
-"""
 import discord
 from discord.ext import commands
 import yt_dlp

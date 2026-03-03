@@ -22,8 +22,21 @@ def load_content():
         return json.load(f)
 
 
+def load_discord_token():
+    token_path = Path(__file__).parent / "token"
+    if not token_path.exists():
+        raise FileNotFoundError("Token file was not found. Create a file named 'token' in the project root.")
+
+    token = token_path.read_text(encoding="utf-8").strip()
+    if not token:
+        raise ValueError("Token file is empty.")
+
+    return token
+
+
 CONFIG = load_config()
 CONTENT = load_content()
+DISCORD_TOKEN = load_discord_token()
 COMMAND_PREFIX = CONFIG["command_prefix"]
 RESTART_REQUESTED = False
 
@@ -48,7 +61,6 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    """Filtruje zprávy pouze z povoleného kanálu"""
     if message.author.bot:
         return
 
@@ -56,6 +68,10 @@ async def on_message(message):
     if isinstance(raw_allowed_channels, int):
         raw_allowed_channels = [raw_allowed_channels]
 
+    if raw_allowed_channels == []:
+        await bot.process_commands(message)
+        return
+    
     allowed_channel_ids = {int(channel_id) for channel_id in raw_allowed_channels}
     if message.channel.id not in allowed_channel_ids:
         return
@@ -99,7 +115,7 @@ async def main():
     """Hlavní asynchronní funkce"""
     async with bot:
         await load_cogs()
-        await bot.start(CONFIG["discord_token"])
+        await bot.start(DISCORD_TOKEN)
 
 @bot.command()
 @commands.has_permissions(administrator=True)
