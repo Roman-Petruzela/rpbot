@@ -3,7 +3,6 @@ from discord.ext import commands
 import json
 from pathlib import Path
 
-
 class Auto(commands.Cog):
 	def __init__(self, bot):
 		self.bot = bot

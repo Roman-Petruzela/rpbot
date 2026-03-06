@@ -60,6 +60,10 @@ class Music(commands.Cog):
         try:
             source = discord.FFmpegPCMAudio(source=url2, **ffmpeg_options)
             source = discord.PCMVolumeTransformer(source, volume=guild_volume)
+
+            if vc.is_playing():
+                return await ctx.send("I'm already playing something in that voice channel.")
+
             vc.play(source)
         except FileNotFoundError:
             if vc.is_connected():

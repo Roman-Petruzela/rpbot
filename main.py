@@ -8,6 +8,7 @@ import sys
 import logging
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("rpbot")
 
 def load_config():
     config_path = Path(__file__).parent / "config.json"
@@ -51,11 +52,48 @@ bot.config = CONFIG
 bot.content = CONTENT
 
 
+async def send_log(message: str):
+    log_channel_id = bot.config.get("log_channel_id")
+    if not log_channel_id:
+        return
+
+    try:
+        channel_id = int(log_channel_id)
+    except (TypeError, ValueError):
+        logger.warning("Invalid log_channel_id in config: %s", log_channel_id)
+        return
+
+    channel = bot.get_channel(channel_id)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(channel_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            logger.warning("Unable to fetch log channel: %s", channel_id)
+            return
+
+    if isinstance(channel, (discord.TextChannel, discord.Thread)):
+        try:
+            await channel.send(message)
+        except (discord.Forbidden, discord.HTTPException):
+            logger.warning("Unable to send message to log channel: %s", channel_id)
+
+
+bot.send_log = send_log
+
+
 @bot.event
 async def on_ready():
     print(f'Logged in as: {bot.user}')
     print(f'Bot ID: {bot.user.id}')
     print('------')
+    await send_log(f"Bot is online as **{bot.user}** (ID: `{bot.user.id}`).")
+
+
+@bot.event
+async def on_command(ctx):
+    await send_log(
+        f"Command `{ctx.command}` used by **{ctx.author}** in {ctx.channel.mention}."
+    )
 
 
 @bot.event
@@ -63,32 +101,49 @@ async def on_message(message):
     if message.author.bot:
         return
 
+    ctx = await bot.get_context(message)
+
+    # Admin cog commands are allowed in any text channel.
+    if ctx.command and getattr(ctx.command, "cog_name", None) == "Admin":
+        await bot.invoke(ctx)
+        return
+
     raw_allowed_channels = bot.config.get("allowed_channels", [])
     if isinstance(raw_allowed_channels, int):
         raw_allowed_channels = [raw_allowed_channels]
 
     if raw_allowed_channels == []:
-        await bot.process_commands(message)
+        await bot.invoke(ctx)
         return
     
     allowed_channel_ids = {int(channel_id) for channel_id in raw_allowed_channels}
     if message.channel.id not in allowed_channel_ids:
         return
 
-    await bot.process_commands(message)
+    await bot.invoke(ctx)
 
 
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("This command is restricted to administrators.")
+        await send_log(
+            f"Missing permissions: **{ctx.author}** tried `{ctx.command}` in {ctx.channel.mention}."
+        )
     elif isinstance(error, commands.NoPrivateMessage):
         await ctx.send("This command cannot be used in private messages.")
+        await send_log(f"Blocked DM command `{ctx.command}` by **{ctx.author}**.")
     elif isinstance(error, (commands.ChannelNotFound)):
         await ctx.send("Invalid channel.")
+        await send_log(
+            f"Invalid channel argument in `{ctx.command}` by **{ctx.author}**."
+        )
     elif isinstance(error, commands.CommandNotFound):
         pass
     else:
+        await send_log(
+            f"Unhandled error in `{ctx.command}` by **{ctx.author}**: `{error}`"
+        )
         raise error
 
 async def load_cogs():
@@ -118,12 +173,14 @@ async def restart(ctx):
     global RESTART_REQUESTED
     RESTART_REQUESTED = True
     await ctx.send("Restarting bot...")
+    await send_log(f"Restart requested by **{ctx.author}**.")
     await bot.close()
     
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def end(ctx):
     await ctx.send("Closing bot...")
+    await send_log(f"Shutdown requested by **{ctx.author}**.")
     await bot.close()
 
 

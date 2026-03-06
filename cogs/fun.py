@@ -16,12 +16,19 @@ class Fun(commands.Cog):
             return await ctx.send(f"**{member.display_name}** is not in a voice channel.")
 
         channel = member.voice.channel
-        
-        vc = await channel.connect()
+        vc = ctx.voice_client
+
+        try:
+            if vc is None:
+                vc = await channel.connect(timeout=15.0, reconnect=False)
+            elif vc.channel != channel:
+                await vc.move_to(channel)
+        except (discord.ClientException, asyncio.TimeoutError, discord.HTTPException):
+            return await ctx.send("I couldn't connect to that voice channel.")
+
         await asyncio.sleep(1)  # Krátká pauza, aby se bot správně připojil
-        
-        # Guild volumes sdílíme s Music cogem
-        from cogs.music import Music
+
+        # Guild volumes sdilime s Music cogem.
         music_cog = self.bot.get_cog('Music')
         volume = 1.0
         if music_cog:
@@ -31,6 +38,9 @@ class Fun(commands.Cog):
         source = discord.FFmpegPCMAudio(executable="ffmpeg", source=gragas_audio_path)
         source = discord.PCMVolumeTransformer(source, volume=volume)
         
+        if vc.is_playing():
+            return await ctx.send("I'm already playing something in that voice channel.")
+
         vc.play(source)
         while vc.is_playing():
             await asyncio.sleep(1)

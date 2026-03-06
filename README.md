@@ -10,8 +10,9 @@ A lightweight Discord bot written in Python using `discord.py` with a modular Co
 ## Project Structure
 - `main.py` – bot entry point, config/content loading, event handlers, cog loading.
 - `cogs/` – command modules (`admin.py`, `music.py`, `fun.py`, `test.py`).
-- `config.json` – bot token, command prefix, allowed channels, yt-dlp/ffmpeg options.
+- `config.json` – command prefix, allowed channels, yt-dlp/ffmpeg options.
 - `content.json` – text content and file paths used by commands.
+- `token` – Discord bot token (plain text, one line).
 - `sources/` – static media files (audio and images).
 
 ## Requirements
@@ -22,5 +23,5 @@ A lightweight Discord bot written in Python using `discord.py` with a modular Co
 
 ## Run
 1. Install dependencies (for example): `pip install discord.py yt-dlp`
-2. Set your Discord bot token in `config.json`
+2. Put your Discord bot token into the `token` file in project root
 3. Start the bot: `python main.py`
