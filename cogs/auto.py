@@ -39,35 +39,35 @@ class Auto(commands.Cog):
 	async def set_auto_role(self, ctx, role: discord.Role = None):
 		me = ctx.guild.me
 		if me is None:
-			return await ctx.send("Fatal error: Bot user not found in guild.")
+			return await ctx.send("Kritická chyba: účet bota nebyl na serveru nalezen.")
 
 		if role is None:
 			role_id = getattr(self.bot, "config", {}).get("auto_role_id", "")
 			if role_id == "":
-				return await ctx.send("Auto role is not set.")
+				return await ctx.send("Auto role není nastavená.")
 
 			current_role = ctx.guild.get_role(int(role_id))
 			if current_role is None:
-				return await ctx.send(f"Auto role ID is set to `{role_id}`, but this role was not found on this server.")
+				return await ctx.send(f"ID auto role je nastavené na `{role_id}`, ale tato role na serveru nebyla nalezena.")
 
-			return await ctx.send(f"Current auto role: **{current_role.name}** (`{current_role.id}`).")
+			return await ctx.send(f"Aktuální auto role: **{current_role.name}** (`{current_role.id}`).")
 
 		if not me.guild_permissions.manage_roles:
-			return await ctx.send("Missing permission: I need the 'Manage Roles' permission to do this.")
+			return await ctx.send("Chybí oprávnění: pro tuto akci potřebuji oprávnění 'Spravovat role'.")
 
 		if role >= me.top_role:
-			return await ctx.send("I cannot assign that role because it is higher or equal to my highest role.")
+			return await ctx.send("Tuto roli nemohu přiřadit, protože je vyšší nebo stejná jako moje nejvyšší role.")
 
 		self.bot.config["auto_role_id"] = str(role.id)
 		self._save_config()
-		await ctx.send(f"Auto role was set to **{role.name}** (`{role.id}`).")
+		await ctx.send(f"Auto role byla nastavena na **{role.name}** (`{role.id}`).")
     
 	@set_auto_role.error
 	async def set_auto_role_error(self, ctx, error):
 		if isinstance(error, commands.MissingRequiredArgument):
-			await ctx.send(f"Usage: `{ctx.prefix}set_auto_role @Role`")
+			await ctx.send(f"Použití: `{ctx.prefix}set_auto_role @Role`")
 		elif isinstance(error, commands.BadArgument):
-			await ctx.send("Invalid role.")
+			await ctx.send("Neplatná role.")
 
 
 async def setup(bot):

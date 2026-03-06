@@ -28,7 +28,7 @@ class Admin(commands.Cog):
         await ctx.send(file=discord.File(rules_gif_path))
         await ctx.send(rules_text)
         embed = discord.Embed(
-            title="Invite your friends!",
+            title="Pozvi své kamarády!",
             description=f"```{invite_url}```",
             color=discord.Color.from_str(embed_color)
         )
@@ -45,25 +45,25 @@ class Admin(commands.Cog):
         me = guild.me
 
         if me is None:
-            return await ctx.send("Fatal error: Bot user not found in guild.")
+            return await ctx.send("Kritická chyba: účet bota nebyl na serveru nalezen.")
 
         app_role = guild.self_role if hasattr(guild, "self_role") else None
         role_limit = app_role or me.top_role
 
         if not guild.me.guild_permissions.manage_roles:
-            return await ctx.send("Missing permission: I need the 'Manage Roles' permission to do this.")
+            return await ctx.send("Chybí oprávnění: pro tuto akci potřebuji oprávnění 'Spravovat role'.")
 
         # Preflight: never start bulk assignment for roles at/above bot's assignable limit.
         if role >= role_limit:
             if app_role is not None:
                 return await ctx.send(
-                    "I cannot assign that role because it is higher or equal to the bot application role."
+                    "Tuto roli nemohu přiřadit, protože je vyšší nebo stejná jako aplikační role bota."
                 )
             return await ctx.send(
-                "I cannot assign that role because it is higher or equal to my highest role."
+                "Tuto roli nemohu přiřadit, protože je vyšší nebo stejná jako moje nejvyšší role."
             )
 
-        await ctx.send(f"Starting to assign the role **{role.name}** to all members. This may take a while...")
+        await ctx.send(f"Začínám přidělovat roli **{role.name}** všem členům. Může to chvíli trvat...")
 
         added = 0
         skipped = 0
@@ -89,16 +89,16 @@ class Admin(commands.Cog):
                 failed += 1
 
         await ctx.send(
-            f"Done. Added: **{added}**, already had: **{skipped}**, failed: **{failed}**."
+            f"Hotovo. Přidáno: **{added}**, už měli: **{skipped}**, neúspěšné: **{failed}**."
         )
 
     @roleall.error
     async def roleall_error(self, ctx, error):
         """Error handler pro roleall"""
         if isinstance(error, commands.BadArgument):
-            await ctx.send("Usage: `!roleall @Role`")
+            await ctx.send("Použití: `!roleall @Role`")
         elif isinstance(error, commands.MaxConcurrencyReached):
-            await ctx.send("Roleall is already running on this server. Please wait for it to finish.")
+            await ctx.send("Příkaz roleall už na tomto serveru běží. Počkej, až doběhne.")
     
     # config zmeny ------------------------------------------------------
     
@@ -112,21 +112,21 @@ class Admin(commands.Cog):
         allowed_channel_ids = [int(channel_id) for channel_id in raw_allowed_channels]
 
         if channel.id in allowed_channel_ids:
-            await ctx.send("This channel is already in the allowed channels list.")
+            await ctx.send("Tento kanál už je v seznamu povolených kanálů.")
             return
 
         allowed_channel_ids.append(channel.id)
         self.bot.config["allowed_channels"] = allowed_channel_ids
         self._save_config()
 
-        await ctx.send(f"Channel **{channel.name}** has been added to the allowed channels list.")
+        await ctx.send(f"Kanál **{channel.name}** byl přidán do seznamu povolených kanálů.")
 
     @add_channel.error
     async def add_channel_error(self, ctx, error):
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send(f"Usage: `{ctx.prefix}add_channel #channel`")
+            await ctx.send(f"Použití: `{ctx.prefix}add_channel #channel`")
         elif isinstance(error, (commands.BadArgument, commands.ChannelNotFound)):
-            await ctx.send("Invalid channel.")
+            await ctx.send("Neplatný kanál.")
             
             
     @commands.command()        
@@ -139,21 +139,21 @@ class Admin(commands.Cog):
         allowed_channel_ids = [int(channel_id) for channel_id in raw_allowed_channels]
 
         if channel.id not in allowed_channel_ids:
-            await ctx.send("This channel is not in the allowed channels list.")
+            await ctx.send("Tento kanál není v seznamu povolených kanálů.")
             return
 
         allowed_channel_ids.remove(channel.id)
         self.bot.config["allowed_channels"] = allowed_channel_ids
         self._save_config()
 
-        await ctx.send(f"Channel **{channel.name}** has been removed from the allowed channels list.")
+        await ctx.send(f"Kanál **{channel.name}** byl odebrán ze seznamu povolených kanálů.")
 
     @rem_channel.error
     async def rem_channel_error(self, ctx, error):
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send(f"Usage: `{ctx.prefix}rem_channel #channel`")
+            await ctx.send(f"Použití: `{ctx.prefix}rem_channel #channel`")
         elif isinstance(error, (commands.BadArgument, commands.ChannelNotFound)):
-            await ctx.send("Invalid channel.")
+            await ctx.send("Neplatný kanál.")
 
     # logging ------------------------------------------------------
 
@@ -166,19 +166,19 @@ class Admin(commands.Cog):
         self.bot.config["log_channel_id"] = target_channel.id
         self._save_config()
 
-        await ctx.send(f"Log channel has been set to {target_channel.mention}.")
+        await ctx.send(f"Logovací kanál byl nastaven na {target_channel.mention}.")
 
         send_log = getattr(self.bot, "send_log", None)
         if callable(send_log):
             await send_log(
-                f"Log channel changed to {target_channel.mention} by **{ctx.author}**."
+                f"Logovací kanál změnil **{ctx.author}** na {target_channel.mention}."
             )
 
     @set_log_channel.error
     async def set_log_channel_error(self, ctx, error):
         """Error handler for log"""
         if isinstance(error, (commands.BadArgument, commands.ChannelNotFound)):
-            await ctx.send("Invalid channel.")
+            await ctx.send("Neplatný kanál.")
 
     # dalsi? ------------------------------------------------------
 

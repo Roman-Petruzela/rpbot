@@ -10,6 +10,21 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("rpbot")
 
+
+def parse_channel_ids(raw_channels) -> set[int]:
+    """Převede hodnotu (int/list) z configu na množinu validních channel ID."""
+    if isinstance(raw_channels, int):
+        raw_channels = [raw_channels]
+
+    channel_ids = set()
+    for channel_id in raw_channels or []:
+        try:
+            channel_ids.add(int(channel_id))
+        except (TypeError, ValueError):
+            continue
+
+    return channel_ids
+
 def load_config():
     config_path = Path(__file__).parent / "config.json"
     with open(config_path, "r", encoding="utf-8") as f:
@@ -86,13 +101,13 @@ async def on_ready():
     print(f'Logged in as: {bot.user}')
     print(f'Bot ID: {bot.user.id}')
     print('------')
-    await send_log(f"Bot is online as **{bot.user}** (ID: `{bot.user.id}`).")
+    await send_log(f"Bot je online jako **{bot.user}** (ID: `{bot.user.id}`).")
 
 
 @bot.event
 async def on_command(ctx):
     await send_log(
-        f"Command `{ctx.command}` used by **{ctx.author}** in {ctx.channel.mention}."
+        f"Příkaz `{ctx.command}` použil **{ctx.author}** v {ctx.channel.mention}."
     )
 
 
@@ -103,20 +118,17 @@ async def on_message(message):
 
     ctx = await bot.get_context(message)
 
-    # Admin cog commands are allowed in any text channel.
-    if ctx.command and getattr(ctx.command, "cog_name", None) == "Admin":
+    # Admin a AI commandy filtrujeme mimo globální seznam, AI si řeší vlastní
+    # omezení přes `ai.allowed_channels` přímo v cogu.
+    if ctx.command and getattr(ctx.command, "cog_name", None) in {"Admin", "AI"}:
         await bot.invoke(ctx)
         return
 
-    raw_allowed_channels = bot.config.get("allowed_channels", [])
-    if isinstance(raw_allowed_channels, int):
-        raw_allowed_channels = [raw_allowed_channels]
-
-    if raw_allowed_channels == []:
+    allowed_channel_ids = parse_channel_ids(bot.config.get("allowed_channels", []))
+    if not allowed_channel_ids:
         await bot.invoke(ctx)
         return
-    
-    allowed_channel_ids = {int(channel_id) for channel_id in raw_allowed_channels}
+
     if message.channel.id not in allowed_channel_ids:
         return
 
@@ -126,23 +138,23 @@ async def on_message(message):
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
-        await ctx.send("This command is restricted to administrators.")
+        await ctx.send("Tento příkaz je určen pouze administrátorům.")
         await send_log(
-            f"Missing permissions: **{ctx.author}** tried `{ctx.command}` in {ctx.channel.mention}."
+            f"Nedostatečná oprávnění: **{ctx.author}** zkusil `{ctx.command}` v {ctx.channel.mention}."
         )
     elif isinstance(error, commands.NoPrivateMessage):
-        await ctx.send("This command cannot be used in private messages.")
-        await send_log(f"Blocked DM command `{ctx.command}` by **{ctx.author}**.")
+        await ctx.send("Tento příkaz nelze použít v soukromých zprávách.")
+        await send_log(f"Zablokovaný DM příkaz `{ctx.command}` od **{ctx.author}**.")
     elif isinstance(error, (commands.ChannelNotFound)):
-        await ctx.send("Invalid channel.")
+        await ctx.send("Neplatný kanál.")
         await send_log(
-            f"Invalid channel argument in `{ctx.command}` by **{ctx.author}**."
+            f"Neplatný argument kanálu v `{ctx.command}` od **{ctx.author}**."
         )
     elif isinstance(error, commands.CommandNotFound):
         pass
     else:
         await send_log(
-            f"Unhandled error in `{ctx.command}` by **{ctx.author}**: `{error}`"
+            f"Nezachycená chyba v `{ctx.command}` od **{ctx.author}**: `{error}`"
         )
         raise error
 
@@ -172,15 +184,15 @@ async def main():
 async def restart(ctx):
     global RESTART_REQUESTED
     RESTART_REQUESTED = True
-    await ctx.send("Restarting bot...")
-    await send_log(f"Restart requested by **{ctx.author}**.")
+    await ctx.send("Restartuji bota...")
+    await send_log(f"Restart vyžádal **{ctx.author}**.")
     await bot.close()
     
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def end(ctx):
-    await ctx.send("Closing bot...")
-    await send_log(f"Shutdown requested by **{ctx.author}**.")
+    await ctx.send("Vypínám bota...")
+    await send_log(f"Vypnutí vyžádal **{ctx.author}**.")
     await bot.close()
 
 
