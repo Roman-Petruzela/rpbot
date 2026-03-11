@@ -4,21 +4,29 @@
   "allowed_channels": [
   ],
   "ydl_options": {
-    "format": "bestaudio/best",
-    "remote_components": "github",
+    "format": "bestaudio[abr<=96]/bestaudio/best",
+    "remote_components": [
+      "ejs:github"
+    ],
+    "js_runtimes": {
+      "node": {},
+      "deno": {}
+    },
     "noplaylist": true,
     "quiet": true
   },
   "ffmpeg_options": {
     "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    "options": "-vn"
+    "options": "-vn -loglevel quiet"
   },
+  "voice_trigger_id": null,
+  "voice_default_name": "voice - {member.display_name}",
   "log_channel_id": null,
   "ai": {
     "enabled": false,
-    "model": "gemini-2.5-flash",
+    "model": "gemini-3.1-flash-lite-preview",
     "fallback_models": [
-      "gemini-2.0-flash"
+      "gemini-2.5-flash"
     ],
     "temperature": 0.7,
     "max_output_tokens": 500,

@@ -3,3 +3,4 @@ __pycache__/
 token
 genai_token
 config.json
+sources/ffmpeg.exe
