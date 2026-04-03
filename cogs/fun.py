@@ -8,7 +8,6 @@ class Fun(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.content = getattr(bot, "content", {})
-        self.guild_volumes = {}
 
     def _quotes_path(self) -> Path:
         return Path(__file__).resolve().parent.parent / "sources" / "text" / "quotes.txt"
@@ -35,15 +34,8 @@ class Fun(commands.Cog):
 
         await asyncio.sleep(1)  # Krátká pauza, aby se bot správně připojil
 
-        # Guild volumes sdilime s Music cogem.
-        music_cog = self.bot.get_cog('Music')
-        volume = 1.0
-        if music_cog:
-            volume = music_cog.guild_volumes.get(ctx.guild.id, 1.0)
-        
         gragas_audio_path = self.content.get("gragas_audio_path", "sources/audio/gragas.ogg")
         source = discord.FFmpegPCMAudio(executable="ffmpeg", source=gragas_audio_path)
-        source = discord.PCMVolumeTransformer(source, volume=volume)
         
         if vc.is_playing():
             return await ctx.send("V tomto voice kanálu už něco přehrávám.")

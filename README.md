@@ -4,7 +4,7 @@ A lightweight Discord bot written in Python using `discord.py` with a modular Co
 
 ## Features
 - **Admin commands**: send server rules, bulk-assign roles, manage allowed text channels.
-- **Music commands**: play audio from YouTube URLs, stop, skip, and adjust volume.
+- **Music commands**: play audio from YouTube URLs, stop, and skip.
 - **Fun commands**: meme/sound effects and small random commands.
 - **AI chat replies (GenAI)**: optional Gemini integration for message replies in chat.
 
@@ -60,6 +60,8 @@ Command prefix is loaded from `config.json` (`command_prefix`). In examples belo
 	Restarts the bot process. Administrator only.
 - `!end`
 	Shuts the bot down. Administrator only.
+- `!status`
+	Shows a compact runtime/status overview for debugging.
 
 ### Admin (`cogs/admin.py`)
 - `!pravidla`
@@ -86,14 +88,17 @@ Command prefix is loaded from `config.json` (`command_prefix`). In examples belo
 	Joins your voice channel and plays audio from the URL. If something is already playing, song is added to queue.
 - `!queue`
 	Shows currently playing track and upcoming queue.
+- `!nowplaying` / `!np`
+	Shows detailed information about the current track.
 - `!pause`
 	Pauses currently playing song.
 - `!stop`
 	Stops playback, clears queue, and disconnects bot from voice.
-- `!volume <0-100>`
-	Sets playback volume for current guild.
 - `!skip`
 	Skips currently playing (or paused) audio and continues with next track from queue.
+
+### Music Notes
+- The music queue is persisted in `music_state.json` so queued tracks survive a bot restart.
 
 ### Fun (`cogs/fun.py`)
 - `!gragas_jumpscare @member`

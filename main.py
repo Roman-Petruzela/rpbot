@@ -12,7 +12,6 @@ logger = logging.getLogger("rpbot")
 
 
 def parse_channel_ids(raw_channels) -> set[int]:
-    """Převede hodnotu (int/list) z configu na množinu validních channel ID."""
     if isinstance(raw_channels, int):
         raw_channels = [raw_channels]
 
@@ -24,6 +23,29 @@ def parse_channel_ids(raw_channels) -> set[int]:
             continue
 
     return channel_ids
+
+
+def validate_config(config: dict) -> dict:
+    validated = dict(config) if isinstance(config, dict) else {}
+
+    command_prefix = validated.get("command_prefix", "!")
+    if not isinstance(command_prefix, str) or not command_prefix.strip():
+        logger.warning("Invalid command_prefix in config; falling back to '!'.")
+        validated["command_prefix"] = "!"
+
+    allowed_channels = validated.get("allowed_channels", [])
+    if not isinstance(allowed_channels, (list, int)):
+        logger.warning("Invalid allowed_channels in config; falling back to empty list.")
+        allowed_channels = []
+    validated["allowed_channels"] = sorted(parse_channel_ids(allowed_channels))
+
+    for key in ("ydl_options", "ffmpeg_options", "ai"):
+        value = validated.get(key)
+        if value is not None and not isinstance(value, dict):
+            logger.warning("Invalid %s in config; falling back to empty dict.", key)
+            validated[key] = {}
+
+    return validated
 
 def load_config():
     config_path = Path(__file__).parent / "config.json"
@@ -49,22 +71,21 @@ def load_discord_token():
     return token
 
 
-CONFIG = load_config()
+CONFIG = validate_config(load_config())
 CONTENT = load_content()
 DISCORD_TOKEN = load_discord_token()
 COMMAND_PREFIX = CONFIG["command_prefix"]
 RESTART_REQUESTED = False
 
 
-# Nastavení intentů
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-# Vytvoření bot instance
 bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
 bot.config = CONFIG
 bot.content = CONTENT
+bot.allowed_channel_ids = parse_channel_ids(CONFIG.get("allowed_channels", []))
 
 
 async def send_log(message: str):
@@ -92,9 +113,7 @@ async def send_log(message: str):
         except (discord.Forbidden, discord.HTTPException):
             logger.warning("Unable to send message to log channel: %s", channel_id)
 
-
 bot.send_log = send_log
-
 
 @bot.event
 async def on_ready():
@@ -118,13 +137,11 @@ async def on_message(message):
 
     ctx = await bot.get_context(message)
 
-    # Admin a AI commandy filtrujeme mimo globální seznam, AI si řeší vlastní
-    # omezení přes `ai.allowed_channels` přímo v cogu.
     if ctx.command and getattr(ctx.command, "cog_name", None) in {"Admin", "AI"}:
         await bot.invoke(ctx)
         return
 
-    allowed_channel_ids = parse_channel_ids(bot.config.get("allowed_channels", []))
+    allowed_channel_ids = bot.allowed_channel_ids
     if not allowed_channel_ids:
         await bot.invoke(ctx)
         return
@@ -157,6 +174,21 @@ async def on_command_error(ctx, error):
             f"Nezachycená chyba v `{ctx.command}` od **{ctx.author}**: `{error}`"
         )
         raise error
+
+
+@bot.command(name="status")
+async def status(ctx):
+    cogs = ", ".join(sorted(bot.cogs.keys())) or "žádné"
+    lines = [
+        f"Prefix: **{COMMAND_PREFIX}**",
+        f"Latency: **{bot.latency * 1000:.0f} ms**",
+        f"Servery: **{len(bot.guilds)}**",
+        f"Načtené cogy: **{cogs}**",
+        f"Allowed channels: **{len(bot.allowed_channel_ids)}**",
+        f"Message content intent: **{'ano' if bot.intents.message_content else 'ne'}**",
+        f"Members intent: **{'ano' if bot.intents.members else 'ne'}**",
+    ]
+    await ctx.send("\n".join(lines))
 
 async def load_cogs():
     base_dir = Path(__file__).parent / "cogs"

@@ -2,18 +2,20 @@ import discord
 from discord.ext import commands
 import yt_dlp
 import asyncio
+import json
 from pathlib import Path
 
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config = getattr(bot, "config", {})
-        self.guild_volumes = {}
+        self.state_path = Path(__file__).resolve().parent.parent / "music_state.json"
         self.guild_queues = {}
         self.guild_now_playing = {}
         self.guild_text_channels = {}
         self.guild_idle_tasks = {}
         self.guild_alone_tasks = {}
+        self._load_music_state()
 
     def _build_ydl_options(self) -> dict:
         ydl_options = dict(self.config.get("ydl_options", {}))
@@ -49,6 +51,71 @@ class Music(commands.Cog):
 
     def _get_guild_queue(self, guild_id: int):
         return self.guild_queues.setdefault(guild_id, [])
+
+    def _serialize_track(self, track: dict) -> dict:
+        serialized = {
+            "title": track.get("title", "Neznámý název"),
+            "source_url": track.get("source_url") or track.get("stream_url", ""),
+            "requested_by": track.get("requested_by", "Neznámý uživatel"),
+        }
+        return serialized
+
+    def _load_music_state(self):
+        if not self.state_path.exists():
+            return
+
+        try:
+            with open(self.state_path, "r", encoding="utf-8") as state_file:
+                data = json.load(state_file)
+        except Exception as exc:
+            print(f"[music] Failed to load state: {exc}")
+            return
+
+        raw_queues = data.get("guild_queues", {})
+        if isinstance(raw_queues, dict):
+            for guild_id, queue in raw_queues.items():
+                try:
+                    parsed_guild_id = int(guild_id)
+                except (TypeError, ValueError):
+                    continue
+
+                if not isinstance(queue, list):
+                    continue
+
+                cleaned_queue = []
+                for track in queue:
+                    if not isinstance(track, dict):
+                        continue
+                    source_url = track.get("source_url") or track.get("stream_url")
+                    title = track.get("title", "Neznámý název")
+                    requested_by = track.get("requested_by", "Neznámý uživatel")
+                    if not isinstance(source_url, str) or not source_url:
+                        continue
+                    cleaned_queue.append({
+                        "title": title,
+                        "source_url": source_url,
+                        "requested_by": requested_by,
+                    })
+
+                if cleaned_queue:
+                    self.guild_queues[parsed_guild_id] = cleaned_queue
+
+    def _save_music_state(self):
+        payload = {
+            "guild_queues": {
+                str(guild_id): [self._serialize_track(track) for track in queue]
+                for guild_id, queue in self.guild_queues.items()
+                if queue
+            },
+        }
+
+        try:
+            tmp_path = self.state_path.with_suffix(".tmp")
+            with open(tmp_path, "w", encoding="utf-8") as state_file:
+                json.dump(payload, state_file, ensure_ascii=False, indent=2)
+            tmp_path.replace(self.state_path)
+        except Exception as exc:
+            print(f"[music] Failed to save state: {exc}")
 
     def _cancel_task(self, task: asyncio.Task | None):
         if task and not task.done():
@@ -161,18 +228,62 @@ class Music(commands.Cog):
 
         return None
 
+    def _load_track_info(self, url: str, ydl_options: dict) -> tuple[str, str]:
+        with yt_dlp.YoutubeDL(ydl_options) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if isinstance(info, dict) and info.get("entries"):
+                entries = [entry for entry in info.get("entries", []) if entry]
+                if not entries:
+                    raise ValueError("Playlist/query did not return any playable entries")
+                info = entries[0]
+
+            if not isinstance(info, dict):
+                raise ValueError("yt-dlp returned unexpected info structure")
+
+            stream_url = self._pick_stream_url(info)
+            if not stream_url:
+                raise ValueError("No playable stream URL was found in extractor output")
+
+            title = info.get("title", "Neznámý název")
+            return title, stream_url
+
+    async def _resolve_track_stream(self, track: dict) -> dict:
+        if isinstance(track.get("stream_url"), str) and track["stream_url"]:
+            return track
+
+        source_url = track.get("source_url")
+        if not isinstance(source_url, str) or not source_url:
+            raise ValueError("Track is missing source_url")
+
+        ydl_options = self._build_ydl_options()
+        title, stream_url = await asyncio.to_thread(self._load_track_info, source_url, ydl_options)
+
+        resolved_track = dict(track)
+        resolved_track["title"] = track.get("title") or title
+        resolved_track["stream_url"] = stream_url
+        resolved_track.setdefault("source_url", source_url)
+        return resolved_track
+
     async def _start_track(self, channel: discord.abc.Messageable, vc: discord.VoiceClient, guild_id: int, track: dict):
-        ffmpeg_options = self.config.get("ffmpeg_options", {})
-        guild_volume = self.guild_volumes.get(guild_id, 1.0)
+        ffmpeg_options = dict(self.config.get("ffmpeg_options", {}))
+        
+        before_opts = ffmpeg_options.get("before_options", "")
+        if "-reconnect" not in before_opts:
+            ffmpeg_options["before_options"] = f"-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 {before_opts}".strip()
+            
+        opts = ffmpeg_options.get("options", "")
+        if "-vn" not in opts:
+            ffmpeg_options["options"] = f"-vn -threads 1 {opts}".strip()
+
         ffmpeg_executable = self._resolve_ffmpeg_executable()
 
         try:
+            track = await self._resolve_track_stream(track)
             source = discord.FFmpegPCMAudio(
                 source=track["stream_url"],
                 executable=ffmpeg_executable,
                 **ffmpeg_options,
             )
-            source = discord.PCMVolumeTransformer(source, volume=guild_volume)
 
             def _after_playback(error):
                 if error:
@@ -187,6 +298,7 @@ class Music(commands.Cog):
             self._cancel_idle_task(guild_id)
             self._cancel_alone_task(guild_id)
             await channel.send(f"Právě hraje: **{track['title']}**")
+            
         except FileNotFoundError:
             if vc.is_connected():
                 await vc.disconnect(force=True)
@@ -208,6 +320,7 @@ class Music(commands.Cog):
             return
 
         next_track = queue.pop(0)
+        self._save_music_state()
         await self._start_track(channel=channel, vc=vc, guild_id=guild_id, track=next_track)
 
     @commands.command()
@@ -229,7 +342,6 @@ class Music(commands.Cog):
         try:
             vc = ctx.voice_client
 
-            # Recover from stale voice client objects before reconnecting.
             if vc is not None and not vc.is_connected():
                 try:
                     await vc.disconnect(force=True)
@@ -254,31 +366,17 @@ class Music(commands.Cog):
             return await ctx.send("Nepodařilo se připojit do tvého voice kanálu.")
 
         await ctx.send("Vyhledávám a připravuji audio...")
-        
-        with yt_dlp.YoutubeDL(ydl_options) as ydl:
-            try:
-                info = ydl.extract_info(url, download=False)
-                if isinstance(info, dict) and info.get("entries"):
-                    entries = [entry for entry in info.get("entries", []) if entry]
-                    if not entries:
-                        raise ValueError("Playlist/query did not return any playable entries")
-                    info = entries[0]
 
-                if not isinstance(info, dict):
-                    raise ValueError("yt-dlp returned unexpected info structure")
-
-                url2 = self._pick_stream_url(info)
-                if not url2:
-                    raise ValueError("No playable stream URL was found in extractor output")
-
-                title = info.get('title', 'Neznámý název')
-            except Exception as e:
-                print(f"[play] Error while loading video: {e}")
-                await ctx.send("Nepodařilo se načíst video.")
-                return
+        try:
+            title, url2 = await asyncio.to_thread(self._load_track_info, url, ydl_options)
+        except Exception as e:
+            print(f"[play] Error while loading video: {e}")
+            await ctx.send("Nepodařilo se načíst video.")
+            return
 
         track = {
             "title": title,
+            "source_url": url,
             "stream_url": url2,
             "requested_by": str(ctx.author),
         }
@@ -286,6 +384,7 @@ class Music(commands.Cog):
         if vc.is_playing() or vc.is_paused():
             queue = self._get_guild_queue(ctx.guild.id)
             queue.append(track)
+            self._save_music_state()
             return await ctx.send(f"Přidáno do fronty na pozici **{len(queue)}**: **{title}**")
 
         await self._start_track(channel=ctx.channel, vc=vc, guild_id=ctx.guild.id, track=track)
@@ -306,6 +405,23 @@ class Music(commands.Cog):
             lines.append("Další ve frontě:")
             for index, track in enumerate(queue, start=1):
                 lines.append(f"{index}. {track['title']}")
+
+        await ctx.send("\n".join(lines))
+
+    @commands.command(aliases=["np"])
+    async def nowplaying(self, ctx):
+        now_playing = self.guild_now_playing.get(ctx.guild.id)
+        if not now_playing:
+            return await ctx.send("Momentálně nic nehraje.")
+
+        queue = self._get_guild_queue(ctx.guild.id)
+        lines = [
+            f"Právě hraje: **{now_playing['title']}**",
+            f"Přidáno od: **{now_playing.get('requested_by', 'Neznámý uživatel')}**",
+            f"Ve frontě zbývá: **{len(queue)}**",
+        ]
+        if ctx.voice_client and ctx.voice_client.channel:
+            lines.append(f"Voice kanál: **{ctx.voice_client.channel.name}**")
 
         await ctx.send("\n".join(lines))
 
@@ -331,23 +447,11 @@ class Music(commands.Cog):
             self._cancel_alone_task(ctx.guild.id)
             self._get_guild_queue(ctx.guild.id).clear()
             self.guild_now_playing.pop(ctx.guild.id, None)
+            self._save_music_state()
             await ctx.voice_client.disconnect()
             await ctx.send("Odpojeno.")
         else:
             await ctx.send("Nejsem připojený ve voice kanálu.")
-
-    @commands.command()
-    async def volume(self, ctx, procenta: int):
-        if procenta < 0 or procenta > 100:
-            return await ctx.send("Zadej hlasitost mezi 0 a 100.")
-
-        nova_hlasitost = procenta / 100
-        self.guild_volumes[ctx.guild.id] = nova_hlasitost
-
-        if ctx.voice_client and ctx.voice_client.source and isinstance(ctx.voice_client.source, discord.PCMVolumeTransformer):
-            ctx.voice_client.source.volume = nova_hlasitost
-
-        await ctx.send(f"Hlasitost nastavena na {procenta}%")
 
     @commands.command()
     async def skip(self, ctx):
@@ -369,7 +473,7 @@ class Music(commands.Cog):
             lines.append(f"Voice kanál: **{vc.channel.name}**")
         lines.append(f"Právě hraje: **{now_playing['title']}**" if now_playing else "Právě hraje: nic")
         lines.append(f"Ve frontě: **{len(queue)}**")
-        lines.append(f"Hlasitost: **{int(self.guild_volumes.get(ctx.guild.id, 1.0) * 100)}%**")
+        lines.append(f"Perzistence fronty: {'ano' if self.state_path.exists() else 'ne'}")
 
         idle_task = self.guild_idle_tasks.get(ctx.guild.id)
         alone_task = self.guild_alone_tasks.get(ctx.guild.id)

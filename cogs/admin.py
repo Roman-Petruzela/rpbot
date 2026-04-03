@@ -53,7 +53,6 @@ class Admin(commands.Cog):
         if not guild.me.guild_permissions.manage_roles:
             return await ctx.send("Chybí oprávnění: pro tuto akci potřebuji oprávnění 'Spravovat role'.")
 
-        # Preflight: never start bulk assignment for roles at/above bot's assignable limit.
         if role >= role_limit:
             if app_role is not None:
                 return await ctx.send(
@@ -117,6 +116,7 @@ class Admin(commands.Cog):
 
         allowed_channel_ids.append(channel.id)
         self.bot.config["allowed_channels"] = allowed_channel_ids
+        self.bot.allowed_channel_ids = set(allowed_channel_ids)
         self._save_config()
 
         await ctx.send(f"Kanál **{channel.name}** byl přidán do seznamu povolených kanálů.")
@@ -144,6 +144,7 @@ class Admin(commands.Cog):
 
         allowed_channel_ids.remove(channel.id)
         self.bot.config["allowed_channels"] = allowed_channel_ids
+        self.bot.allowed_channel_ids = set(allowed_channel_ids)
         self._save_config()
 
         await ctx.send(f"Kanál **{channel.name}** byl odebrán ze seznamu povolených kanálů.")
